@@ -19,7 +19,9 @@ Then start **OpenSnitch** from the menu. The daemon allows unknown connections u
 - **eBPF modules:** compiled against the Fedora `kernel-devel` series pinned in `UPSTREAM` (`KERNEL_SERIES`); the RPM release carries it (`…-1.k7.3.fc44`).
 - **UI:** upstream's Python UI, with dependencies from Fedora's own repos (no pip).
 - The service is not enabled on install.
-- One patch on top of upstream (`patches/`): with *Disable pop-ups* checked, the UI denies unknown connections right away (this attempt only) instead of opening a prompt. Upstream saves that setting but never applies it.
+- Two patches on top of upstream (`patches/`):
+  - The daemon sends `localhost` as the gRPC authority on unix sockets, as current grpc-go does. grpc-go 1.32 sends the socket path, which strict HTTP/2 servers reject.
+  - With *Disable pop-ups* checked, the UI denies unknown connections right away (this attempt only) instead of opening a prompt. Upstream saves that setting but never applies it.
 
 ## Updates
 

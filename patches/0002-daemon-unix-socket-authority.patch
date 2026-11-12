@@ -1,0 +1,12 @@
+diff --git a/daemon/ui/client.go b/daemon/ui/client.go
+index b4d6845..d298fd2 100644
+--- a/daemon/ui/client.go
++++ b/daemon/ui/client.go
+@@ -282,6 +282,7 @@ func (c *Client) openSocket() (err error) {
+ 	}
+ 	if c.isUnixSocket {
+ 		c.con, err = grpc.Dial(c.socketPath, dialOption,
++			grpc.WithAuthority("localhost"),
+ 			grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
+ 				return net.DialTimeout(c.unixSockPrefix, addr, timeout)
+ 			}))

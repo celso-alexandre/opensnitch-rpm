@@ -11,6 +11,7 @@ License:        GPL-3.0-or-later
 URL:            https://github.com/evilsocket/opensnitch
 Source0:        opensnitch-%{commit}.tar.gz
 Patch0:         0001-ui-honor-disable-popups.patch
+Patch1:         0002-daemon-unix-socket-authority.patch
 
 ExclusiveArch:  x86_64
 
@@ -128,6 +129,9 @@ install -Dm644 resources/io.github.evilsocket.opensnitch.appdata.xml %{buildroot
 %{_metainfodir}/io.github.evilsocket.opensnitch.appdata.xml
 
 %changelog
+* Thu Nov 12 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-3
+- daemon: send "localhost" as the gRPC authority on unix sockets, as current grpc-go does, so strict HTTP/2 servers accept it
+
 * Thu Nov 12 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-2
 - UI: honor the disable pop-ups setting by denying unknown connections without a dialog
 
