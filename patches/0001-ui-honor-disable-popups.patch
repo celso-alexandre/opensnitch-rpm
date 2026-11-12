@@ -1,0 +1,19 @@
+diff --git a/ui/opensnitch/service.py b/ui/opensnitch/service.py
+index 1e327c0..84b072d 100644
+--- a/ui/opensnitch/service.py
++++ b/ui/opensnitch/service.py
+@@ -942,6 +942,14 @@ class UIService(ui_pb2_grpc.UIServicer, QtWidgets.QGraphicsObject):
+         #    self._desktop_notifications.ask(request, callback)
+ 
+         # TODO: allow connections originated from ourselves: os.getpid() == request.pid)
++        if self._cfg.getBool(Config.DEFAULT_DISABLE_POPUPS):
++            rule = ui_pb2.Rule(name="popups-disabled", enabled=True, action=Config.ACTION_DENY, duration=Config.DURATION_ONCE)
++            rule.created = int(datetime.now().timestamp())
++            rule.operator.type = Config.RULE_TYPE_SIMPLE
++            rule.operator.operand = Config.OPERAND_PROCESS_PATH
++            rule.operator.data = request.process_path
++            return rule
++
+         self._asking = True
+         peer = context.peer()
+         proto, addr = self._get_peer(peer)

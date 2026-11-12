@@ -27,5 +27,7 @@ EOF
 
 grep -q '"DefaultAction"' /etc/opensnitchd/default-config.json
 [ "$(stat -c %a /etc/opensnitchd/rules)" = 700 ]
+grep -q 'name="popups-disabled"' /usr/lib/python3*/site-packages/opensnitch/service.py
+echo "ok disable-popups patch applied"
 rpm -V opensnitch opensnitch-ui
 echo "all checks passed"

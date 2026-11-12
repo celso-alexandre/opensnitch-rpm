@@ -10,6 +10,7 @@ Summary:        Interactive application firewall
 License:        GPL-3.0-or-later
 URL:            https://github.com/evilsocket/opensnitch
 Source0:        opensnitch-%{commit}.tar.gz
+Patch0:         0001-ui-honor-disable-popups.patch
 
 ExclusiveArch:  x86_64
 
@@ -59,7 +60,7 @@ The OpenSnitch user interface: prompts for new connections, rule editor,
 live connection list and statistics.
 
 %prep
-%autosetup -n opensnitch-%{commit}
+%autosetup -n opensnitch-%{commit} -p1
 sed -i 's|/usr/local/bin/opensnitchd|%{_bindir}/opensnitchd|' daemon/data/init/opensnitchd.service
 sed -i '/^      data_files=\[/,/\],$/d' ui/setup.py
 
@@ -127,5 +128,8 @@ install -Dm644 resources/io.github.evilsocket.opensnitch.appdata.xml %{buildroot
 %{_metainfodir}/io.github.evilsocket.opensnitch.appdata.xml
 
 %changelog
+* Thu Nov 12 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-2
+- UI: honor the disable pop-ups setting by denying unknown connections without a dialog
+
 * Thu Nov 12 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-1
 - Package the signed upstream commit a135384 for Fedora 44

@@ -20,6 +20,7 @@ TOP=$(mktemp -d)
 trap 'rm -rf "$TOP"' EXIT
 mkdir -p "$TOP"/{SOURCES,SPECS}
 "$HERE/prepare-source.sh" "$TOP/SOURCES"
+cp "$HERE"/patches/*.patch "$TOP/SOURCES/"
 
 rpmbuild -bb "$HERE/opensnitch.spec" \
     --define "_topdir $TOP" \
