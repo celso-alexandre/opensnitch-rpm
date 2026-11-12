@@ -1,0 +1,61 @@
+name: Check for upstream and kernel updates
+
+# Weekly: if upstream has a newer commit signed by the pinned maintainer key, or Fedora
+# ships a new kernel series, (re)write the single auto/update-upstream branch and upsert
+# one PR for it. The Build workflow is dispatched explicitly because pushes made with
+# GITHUB_TOKEN do not trigger other workflows; it merges the PR when the RPMs pass.
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:44
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: auto/update-upstream
+    steps:
+      - run: dnf install -y git gh gnupg2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: check
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          set +e; SUMMARY=$(./check-update.sh); rc=$?; set -e
+          [ "$rc" = 3 ] && exit 0
+          [ "$rc" = 0 ] || exit "$rc"
+          echo "summary=$SUMMARY" >> "$GITHUB_OUTPUT"
+      - name: Upsert PR
+        if: steps.check.outputs.summary
+        env:
+          SUMMARY: ${{ steps.check.outputs.summary }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q origin "$BRANCH" 2>/dev/null && git diff --quiet FETCH_HEAD -- UPSTREAM; then
+            echo "$BRANCH already proposes: $SUMMARY"; exit 0
+          fi
+          OLD=$(git show HEAD:UPSTREAM | sed -n 's/^UPSTREAM_COMMIT=//p')
+          . ./UPSTREAM
+          git checkout -B "$BRANCH"
+          git commit -qam "Update to $SUMMARY"
+          git push -f origin "$BRANCH"
+
+          TITLE="Update to $SUMMARY"
+          BODY="Weekly check: $SUMMARY.
+
+          - upstream commit: $UPSTREAM_REPO/commit/$UPSTREAM_COMMIT (signature checked against $UPSTREAM_KEY_FINGERPRINT)
+          - upstream changes: $UPSTREAM_REPO/compare/$OLD...$UPSTREAM_COMMIT
+          - Fedora kernel series for the eBPF modules: $KERNEL_SERIES
+
+          The Build workflow runs on this branch, builds the RPMs and install-tests them; it merges when they pass. Merging publishes the release and the dnf repo."
+          N=$(gh pr list -R "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number -q '.[0].number')
+          if [ -n "$N" ]; then gh pr edit "$N" -R "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
+          else gh pr create -R "$GITHUB_REPOSITORY" --base main --head "$BRANCH" --title "$TITLE" --body "$BODY"; fi
+          gh workflow run build.yml -R "$GITHUB_REPOSITORY" --ref "$BRANCH"

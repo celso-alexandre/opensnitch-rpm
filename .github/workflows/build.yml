@@ -1,0 +1,143 @@
+name: Build
+
+# Builds and tests the RPMs on every PR and push to main.
+# - auto/update-upstream (dispatched weekly by check-update.yml): merge when green.
+# - main, with a version that has no GitHub release yet (or no Pages site): sign the
+#   RPMs, publish the release, and publish the dnf repo on Pages.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths-ignore: ["README.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  meta:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      title: ${{ steps.v.outputs.title }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_KEY: ${{ secrets.PKG_GPG_KEY_ID != '' }}
+          SITE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: |
+          . ./UPSTREAM
+          VERSION="$UPSTREAM_VERSION-${UPSTREAM_DATE}git${UPSTREAM_COMMIT:0:7}"
+          TAG="v$VERSION-$PACKAGE_RELEASE.k$KERNEL_SERIES"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "title=OpenSnitch $VERSION (kernel $KERNEL_SERIES)" >> "$GITHUB_OUTPUT"
+          # Merges done by automerge below arrive as workflow_dispatch, not push
+          [ "$GITHUB_REF" = refs/heads/main ] && [ "$GITHUB_EVENT_NAME" != pull_request ] || exit 0
+          if [ "$HAS_KEY" != true ]; then
+            echo "::warning::PKG_GPG_KEY_ID is not set; nothing is published"
+          elif ! gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            ! curl -fsSIo /dev/null "$SITE/opensnitch.repo"; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  rpm:
+    runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: ./build.sh dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rpm
+          path: dist/*.rpm
+          if-no-files-found: error
+
+  rpm-test:
+    needs: rpm
+    runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: rpm
+          path: dist/
+      - run: dnf install -y file
+      - run: tests/test-rpms.sh dist
+
+  automerge:
+    needs: rpm-test
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/auto/update-upstream'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          # --match-head-commit: never merge a commit other than the one just tested
+          gh pr merge "$BRANCH" -R "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$SHA"
+          # A merge made with GITHUB_TOKEN fires no push event, so start main's run (which publishes)
+          gh workflow run build.yml -R "$GITHUB_REPOSITORY" --ref main
+
+  publish:
+    needs: [meta, rpm-test]
+    if: needs.meta.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:44
+    permissions:
+      contents: write
+    steps:
+      - run: dnf install -y git gh gnupg2 rpm-sign createrepo_c
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: rpm
+          path: dist/
+      - name: Sign and assemble the repo
+        env:
+          GPG_KEY: ${{ secrets.PKG_GPG_PRIVATE_KEY }}
+          KEY_ID: ${{ secrets.PKG_GPG_KEY_ID }}
+        run: |
+          echo "$GPG_KEY" | gpg --batch --import
+          ./site.sh dist "${{ needs.meta.outputs.tag }}" "$KEY_ID" site
+      # Before Pages: the dnf metadata points at these release assets
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          TITLE: ${{ needs.meta.outputs.title }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          . ./UPSTREAM
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TITLE" \
+              --notes "Built from upstream commit $UPSTREAM_REPO/commit/$UPSTREAM_COMMIT (signed by $UPSTREAM_KEY_FINGERPRINT), eBPF modules for Fedora kernel $KERNEL_SERIES.
+
+          Install through the dnf repo (see README) to get updates."
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber dist/*.rpm
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  pages:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
