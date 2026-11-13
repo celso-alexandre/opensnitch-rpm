@@ -81,6 +81,10 @@ cd ../ui
 install -Dm755 daemon/opensnitchd %{buildroot}%{_bindir}/opensnitchd
 install -Dm644 daemon/data/init/opensnitchd.service %{buildroot}%{_unitdir}/opensnitch.service
 install -Dm644 utils/packaging/daemon/deb/debian/opensnitch.logrotate %{buildroot}%{_sysconfdir}/logrotate.d/opensnitch
+sed -i 's/create 640 root root/create 600 root root/' %{buildroot}%{_sysconfdir}/logrotate.d/opensnitch
+grep -q 'create 600 root root' %{buildroot}%{_sysconfdir}/logrotate.d/opensnitch
+install -d %{buildroot}%{_localstatedir}/log
+touch %{buildroot}%{_localstatedir}/log/opensnitchd.log
 install -d %{buildroot}%{_prefix}/lib/opensnitchd/ebpf
 install -m644 ebpf_prog/opensnitch*.o %{buildroot}%{_prefix}/lib/opensnitchd/ebpf/
 install -d %{buildroot}%{_sysconfdir}/opensnitchd/rules %{buildroot}%{_sysconfdir}/opensnitchd/tasks
@@ -100,6 +104,8 @@ install -Dm644 resources/io.github.evilsocket.opensnitch.appdata.xml %{buildroot
 
 %post
 %systemd_post opensnitch.service
+[ -e %{_localstatedir}/log/opensnitchd.log ] || install -m600 /dev/null %{_localstatedir}/log/opensnitchd.log
+chmod 600 %{_localstatedir}/log/opensnitchd.log %{_localstatedir}/log/opensnitchd.log.* 2>/dev/null || :
 
 %preun
 %systemd_preun opensnitch.service
@@ -121,6 +127,7 @@ install -Dm644 resources/io.github.evilsocket.opensnitch.appdata.xml %{buildroot
 %config(noreplace) %{_sysconfdir}/opensnitchd/rules/*.json
 %config(noreplace) %{_sysconfdir}/opensnitchd/tasks/tasks.json
 %config(noreplace) %{_sysconfdir}/logrotate.d/opensnitch
+%ghost %attr(0600,root,root) %{_localstatedir}/log/opensnitchd.log
 
 %files ui -f %{pyproject_files}
 %{_bindir}/opensnitch-ui
@@ -129,6 +136,9 @@ install -Dm644 resources/io.github.evilsocket.opensnitch.appdata.xml %{buildroot
 %{_metainfodir}/io.github.evilsocket.opensnitch.appdata.xml
 
 %changelog
+* Fri Nov 13 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-4
+- Keep the daemon log root-only: 0600 log file, logrotate creates 0600
+
 * Thu Nov 12 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-3
 - daemon: send "localhost" as the gRPC authority on unix sockets, as current grpc-go does, so strict HTTP/2 servers accept it
 
