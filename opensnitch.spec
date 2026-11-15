@@ -136,6 +136,9 @@ chmod 600 %{_localstatedir}/log/opensnitchd.log %{_localstatedir}/log/opensnitch
 %{_metainfodir}/io.github.evilsocket.opensnitch.appdata.xml
 
 %changelog
+* Sun Nov 15 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-5
+- Build for Fedora 45 too; the dnf repo now has one directory per Fedora release
+
 * Fri Nov 13 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-4
 - Keep the daemon log root-only: 0600 log file, logrotate creates 0600
 
