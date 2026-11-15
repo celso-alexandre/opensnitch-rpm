@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the RPMs. Runs inside a Fedora container (CI) or locally:
-#   podman run --rm -v "$PWD:/w:Z" -w /w registry.fedoraproject.org/fedora:44 ./build.sh dist
+#   podman run --rm -v "$PWD:/w:Z" -w /w registry.fedoraproject.org/fedora:45 ./build.sh dist/rpm-fc45
 # Usage: ./build.sh <out-dir>
 set -euo pipefail
 
