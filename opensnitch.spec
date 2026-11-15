@@ -71,7 +71,22 @@ cd daemon
 CGO_ENABLED=1 go build -mod=vendor -trimpath -buildmode=pie \
     -ldflags "-linkmode=external -extldflags '%{build_ldflags}'" -o opensnitchd .
 cd ../ebpf_prog
-make KERNEL_VER=$(basename %{kernel_dir}) KERNEL_DIR=%{kernel_dir} KERNEL_HEADERS=%{kernel_dir} \
+# Upstream compiles to host (x86) bitcode, then runs llc -march=bpf on it. LLVM 23
+# refuses a module whose DataLayout is not the target's, so drop the x86 layout and
+# triple first and let llc use BPF's (what older LLVM did on its own).
+cat > bpf-llc <<'LLC'
+#!/bin/sh
+set -e
+in=; for a; do in=$a; done
+ll=${in%.bc}.ll
+llvm-dis "$in" -o - | sed -E '/^target (datalayout|triple) = /d' > "$ll"
+n=$#; i=1
+for a; do [ $i -lt $n ] && set -- "$@" "$a"; i=$((i + 1)); done
+shift $n
+exec llc "$@" "$ll"
+LLC
+chmod +x bpf-llc
+make LLC=$PWD/bpf-llc KERNEL_VER=$(basename %{kernel_dir}) KERNEL_DIR=%{kernel_dir} KERNEL_HEADERS=%{kernel_dir} \
     EXTRA_FLAGS="-DCC_USING_FENTRY -fms-extensions -Wno-microsoft-anon-tag"
 llvm-strip -g opensnitch*.o
 cd ../ui
@@ -138,6 +153,7 @@ chmod 600 %{_localstatedir}/log/opensnitchd.log %{_localstatedir}/log/opensnitch
 %changelog
 * Sun Nov 15 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-5
 - Build for Fedora 45 too; the dnf repo now has one directory per Fedora release
+- eBPF: drop the host DataLayout before llc -march=bpf, which LLVM 23 requires
 
 * Fri Nov 13 2026 Celso Alexandre <celso-alexandre@users.noreply.github.com> - 1.9.0~20260727gita135384-4
 - Keep the daemon log root-only: 0600 log file, logrotate creates 0600
